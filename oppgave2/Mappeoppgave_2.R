@@ -27,7 +27,10 @@ lm(deaths_per_100k ~ fully_vaccinated_pct_of_pop, data = covid_df)
 
 # Den neste verdien viser stigningstallet til regresjonsmodellen.
 # Altså hvor mye y øker når x økes med 1.
-# Siden x-aksen er i prosent er det hvor mye 
+# Siden x-aksen er i prosent er det hvor mye y endrer seg fra 0% til 100%.
+# Stigningstallet er negativt fordi det er en negativ korrelasjon mellom 
+# dødsfall per 100,000 innbyggere og andel av befolkningen som er fullvaksinert.
+
 
 covid_df %>%
   ggplot(aes(x=fully_vaccinated_pct_of_pop, y=deaths_per_100k, label = name)) +
@@ -41,3 +44,4 @@ covid_df %>%
   theme_bw() 
 
 
+# Samarbeidet med Fridtjof Mortensen, Arne Nordkvelle og Markus Mollatt
