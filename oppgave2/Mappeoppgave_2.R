@@ -2,7 +2,7 @@ library(tidyverse)
 library(rjson)
 library(jsonlite)
 
-#Oppgave 1
+# Oppgave 1
 
 covid_df <- fromJSON("https://static01.nyt.com/newsgraphics/2021/12/20/us-coronavirus-deaths-2021/ff0adde21623e111d8ce103fedecf7ffc7906264/scatter.json")
 
@@ -17,7 +17,7 @@ covid_df %>%
   theme_bw()
 
 
-#Oppgave 2
+# Oppgave 2
 summary(covid_df)
 
 lm(deaths_per_100k ~ fully_vaccinated_pct_of_pop, data = covid_df)
