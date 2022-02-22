@@ -58,3 +58,4 @@ df %>%
 
 
 # Brukte kode fra: "https://stackoverflow.com/questions/21675379/r-only-keep-the-3-x-first-characters-in-a-all-rows-in-a-column"
+# Samarbeidet med: Fridtjof Mortensen, Arne Nordkvelle og Markus Mollatt
