@@ -10,3 +10,4 @@ def player_strategy(n_battalions,n_fields):
     assert sum(battalions)==n_battalions
     
     return battalions
+a
