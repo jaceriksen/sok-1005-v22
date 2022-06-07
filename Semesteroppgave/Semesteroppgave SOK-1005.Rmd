@@ -1,0 +1,287 @@
+---
+title: "Semesteroppgave SOK-1005"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Oppgave 1
+Vi har fått i oppgave å slå sammen de 6 datasettene til ett datasett.
+Det første vi gjør er å hente inn pakkene vi trenger til koden.
+```{r}
+library(tidyverse)
+library(jsonlite)
+library(lubridate)
+```
+
+
+Så laster vi inn datasettene vi skal bruke til å analysere driften til sandwich-kjeden. Her har vi brukt read_csv() for å lese URL-linkene og få lastet ned dataene.
+```{r}
+AppWichStoresAttributes <- read_csv("https://data.mendeley.com/public-files/datasets/6htjnfs78b/files/26afd5e7-90b1-4301-ac5e-5905b38c4ec2/file_downloaded")
+county_crime <- read_csv("https://data.mendeley.com/public-files/datasets/6htjnfs78b/files/3691994e-2874-4ee6-b215-12e130c96175/file_downloaded")
+county_demographic <- read_csv("https://data.mendeley.com/public-files/datasets/6htjnfs78b/files/527e7486-7233-460a-99e0-3529b7cd7d49/file_downloaded")
+county_employment <- read_csv("https://data.mendeley.com/public-files/datasets/6htjnfs78b/files/846ac757-721e-4fd9-a414-5871f60de093/file_downloaded")
+weekly_sales_10stores <- read_csv("https://data.mendeley.com/public-files/datasets/6htjnfs78b/files/b963fdd1-0df9-4257-bd62-65256ec9d57c/file_downloaded")
+weekly_weather <- read_csv("https://data.mendeley.com/public-files/datasets/6htjnfs78b/files/b8708b3c-c5e8-456e-83f4-9f23f472a840/file_downloaded")
+```
+
+Vi har lest over dataene vi hentet inn, og vi ser at vi må endre dato-variablene ettersom de var i et ugunstig format. Vi brukte blant annet mutate(), recode() og rename() for å endre til et format som er lettere å jobbe med .Vi endret også navn på noen variabler slik at de skal passe sammen med de andre datasettene, blant annet "Weather_Date" og "Store_County".
+```{r}
+weekly_sales_10stores$Date <- mdy(weekly_sales_10stores$Date)
+weekly_sales_10stores <- weekly_sales_10stores %>%
+  rename(Store_Num = Store_num) %>% 
+  mutate(Week = lubridate::isoweek(Date)) %>% 
+  mutate(County_Name = recode(Store_Num, "2" = "Power County", "5" = "Power County", "7" = "Power County", 
+                              "9" = "Appleton County", "11" = "River County", "14" = "Rail County",
+                              "16" = "Lake County", "19" = "Farm County", "23" = "Farm County", "24" = "River County"))
+
+weekly_weather$Weather_Date <- dmy(weekly_weather$Weather_Date)
+weekly_weather <- weekly_weather %>%
+  rename(Date = Weather_Date) %>% 
+  mutate(County_Name = recode(Weather_Station, "Appleton Airport" = "Appleton County", "Lake City Airport" = "Lake County", 
+                              "North Town Airport" = "Farm County", "Rail City Airport" = "Rail County", 
+                              "River City Airport" = "River County"))
+
+AppWichStoresAttributes <- AppWichStoresAttributes %>%
+  rename(County_Name = Store_County) %>% 
+  select(-Store_Minority_Clients)
+```
+
+Videre prøvde vi først merge() og inner_join(), men vi fant fort ut at left_join() var en bedre opsjon for beholde alle variablene vi trenger videre i oppgaven.
+
+```{r}
+crime_demo <- left_join(x=county_crime, y=county_demographic, by="County_Name")
+
+crime_demo_emp <- left_join(x=crime_demo,y=county_employment, by="County_Name")
+
+total <- left_join(x=weekly_sales_10stores, y=weekly_weather, by=c("Date", "County_Name"))
+
+total <- left_join(x=total, y=AppWichStoresAttributes, by=c("Store_Num", "County_Name"))
+
+df <- left_join(total, crime_demo_emp, by="County_Name")
+```
+Vi endte opp med et stort datasett som består av 79459 observasjoner og 73 variabler.
+
+## Oppgave 2
+Videre i oppgaven skulle vi benytte dataene til å lage en salgsrapport på kort sikt. Vi ønsket å vise fortjenesten til ett enkelt utsalgssted uke for uke. Videre vil vi sammenligne fortjenesten med gjennomsnittet for de resterende utsalgsstedene.
+Vi bestemte oss for å fokusere på utsalget North Town BigBox i denne oppgaven. Vi filtrerte først data etter utsalgstedet. Målingene i datasettet startet i uke 13, 2012, og gikk fram til uke 12, 2013. Vi valgte å fjerne dataene fra 2013 i analysen vår, fordi tallene alltid endte opp foran tallene for 2012. Derfor er analysen vår basert på uke 13-52 i 2012. 
+```{r}
+NTBB <- df %>% filter(Store_Num=="23", Year == "2012") %>%
+  select(Store_Name,Date,Week,Profit)
+
+WeekSumNTBB <-
+  aggregate(NTBB$Profit, 
+            by=list(Week=NTBB$Week), 
+            FUN=sum) %>%
+  rename(Profit = x)
+
+WeekSumNTBB %>% 
+  ggplot(aes(x=Week,y=Profit)) +
+  geom_line(size=1.1, color='red')  +
+  geom_point(size=2, color='red')+
+  scale_x_continuous(breaks=seq(13, 52))+
+  theme(axis.text.x = element_text(angle=60)) +
+  theme(axis.text.y = element_text(angle=90, vjust = 1)) +
+  labs(
+    x = "Uke",
+    y = "Profitt",
+    title = "Fortjeneste per uke North Town BigBox (uke 13-52, 2012)")
+```
+
+Plottet ovenfor viser ukentlig fortjeneste fra uke 13 til 52 i 2012, for utsalgsstedet North Town BigBox (NTBB). Vi kan se at i uke 13, ligger fortjenesten på rundt 6250 dollar. Vi ser at fortjenesten ligger relativt stabilt frem til uke 32, og synker til det laveste punktet i uke 35. Etterfulgt av store svingninger helt frem til uke 52. 
+
+
+For å sammenligne fortjenesten til NTBB med de resterende utsalgsstedene, har vi summert ukentlig profitt for de resterende utsalgsstedene og brukt mutate() for å lage et datasett kalt NTBBOther. I NTBBOther har vi fortjenesten til NTBB og gjennomsnittet av fortjenestene til de andre utsalgsstedene uke for uke. Vi satte så NTBBOther inn i ggplot, slik at vi kan sammenligne dem.
+```{r}
+other <- df %>% filter(Store_Num!="23", Year == "2012") %>%
+  select(Store_Name,Date,Week,Profit)
+
+WeekSumOther <-
+  aggregate(other$Profit, 
+            by=list(Week=other$Week), 
+            FUN=sum) %>%
+  rename(Profit = x)%>%
+  mutate(Mean=Profit/9)
+
+NTBBother <- WeekSumNTBB %>%
+  mutate(Mean = WeekSumOther$Mean)
+
+colors <- c("North Town BigBox" = "red", "Gj.snitt andre utsalgssteder" = "blue")
+
+NTBBother %>% 
+  ggplot(aes(x=Week)) +
+  geom_line(aes(y=Profit, color='North Town BigBox')) +
+  geom_line(aes(y=Mean, color='Gj.snitt andre utsalgssteder')) +
+  geom_point(aes(x=Week,y=Profit), size=2, color='red')+
+  geom_point(aes(x=Week,y=Mean), size=2, color='blue')+ 
+  scale_x_continuous(breaks=seq(13, 52))+
+  theme(axis.text.x = element_text(angle=60, hjust = 0.7))  +
+  theme(axis.text.y = element_text(angle=90, vjust = 1))+
+  labs(x = "Uke",
+       y = "Fortjeneste",
+       title = "Sammenligning av fortjeneste NTBB og de resterende utsalgsstedene (uke 13-52, 2012)",
+       color='')+
+  theme(legend.position = "bottom")+
+  scale_color_manual(values=colors)
+```
+
+I plottet over ser vi tidsperioden uke 13-52, i 2012. Vi ser at NTBB ligger under gjennomsnittet til sandwich-kjeden i denne perioden. Derimot, i uke 45, snur trenden og vi ser NTBB stiger over gjennomsnittlig fortjeneste. Generelt sett kan vi si at NTBB følger trendene til gjennomsnittlig fortjeneste i resten av kjeden.
+
+## Oppgave 3
+I oppgave 3 ble vi bedt om å lage en salgsrapport på lengre sikt, på et aggregert nivå. Vi valgte å først se på den månedlige fortjenesten til NTBB. Så lagde vi et plott som viser prosentvis endring i fortjeneste fra måned til måned. Til slutt så vi på sandwich-kjedens fortjeneste på aggregert nivå.
+
+Vi startet med å lage datasettet MonthProfit for NTBB. Dette inneholder variablene for måned og profitt. Videre brukte vi group_by() og summarise() for å beregne fortjenesten for hver måned. Vi satte det så inn datasettet i et plott med ggplot(). 
+```{r}
+MonthProfit <- df %>%
+  filter(Store_Num == "23", Year == "2012") %>% 
+  select(Month,Profit)
+
+MonthProfit <- MonthProfit %>% 
+  group_by(Month) %>% 
+  summarise(MonthlyProfit = sum(Profit))
+  
+MonthProfit %>%
+  ggplot(aes(x=Month, y=MonthlyProfit)) +
+  geom_line(color='blue')  +
+  geom_point(size=1.5, color='blue')+
+  scale_x_continuous(breaks=seq(1, 53))+
+  theme(axis.text.x = element_text(vjust = 0.6)) +
+  theme(axis.text.y = element_text(angle = 60, hjust = 1)) + 
+  labs(x = "Måned",
+       y = "Fortjeneste",
+       title = "Månedlig fortjeneste North Town BigBox, april-desember 2012")
+```
+
+I plottet over ser vi fortjeneste på y-aksen som går fra omtrent 19000 dollar opp til omtrent 30000 dollar. På x-aksen ser vi månedene fra april til desember, 2012. Vi kan se store variasjoner i fortjenesten til NTBB, som ligger på det høyeste i juli, og har sitt laveste punkt i november. Fortjenesten faller relativt markant fra sitt høyeste punkt til det laveste, over 4 måneder.
+
+
+Vi prøver videre å vise hvordan NTBB presterer, fra måned til måned, ved å se på den prosentvise endringen i fortjenesten. Vi har laget et datasett, Monthly_report, som strekker seg fra april til desember, 2012. Vi brukte funksjonene mutate() og lag(), for å beregne den prosentvise endringen. Deretter brukte vi ggplot til å lage et søylediagram som viser endringene.
+```{r}
+Monthly_report <- MonthProfit %>% 
+  mutate(
+    MoM = (MonthlyProfit - lag(MonthlyProfit)) / lag(MonthlyProfit))
+
+ggplot(Monthly_report, aes(x=Month, y=MoM)) + 
+  geom_col(fill="blue")+
+  scale_y_continuous(labels = scales::percent)+
+  labs(x = "Måned",
+       y = "Prosentvis endring",
+       title = "Prosentvis endring i fortjeneste fra forrige måned")
+```
+
+På y-aksen i dette plottet, ser vi den prosentvise endringen fra måned til måned. Vi ser store svingninger i prestasjonen til NTBB, med den største nedgangen i måned 8, med over 20% reduksjon i fortjeneste. Vi ser også den høyeste økningen i desember, med en oppgang på rett over 40% fra foregående måned.
+
+
+For å se på fortjenesten til sandwich-kjeden på aggregert nivå, har vi laget et datasett, MonthProfitTOT, som vi filtrerte etter året 2012, og plottet ved bruk av ggplot().
+```{r}
+MonthProfitTOT <- df %>%
+  filter(Year == "2012") %>% 
+  select(Month,Profit)
+
+MonthProfitTOT <- MonthProfitTOT %>% 
+  group_by(Month) %>% 
+  summarise(MonthlyProfit = sum(Profit))
+
+MonthProfitTOT %>%
+  ggplot(aes(x=Month, y=MonthlyProfit)) +
+  geom_line(color='blue')  +
+  geom_point(size=1.5, color='blue')+
+  scale_x_continuous(breaks=seq(1, 53))+
+  theme(axis.text.x = element_text(vjust = 0.6)) +
+  theme(axis.text.y = element_text(angle = 60, hjust = 1)) + 
+  labs(x = "Måned",
+       y = "Fortjeneste",
+       title = "Månedlig fortjeneste, aggregert nivå")
+
+```
+
+Y-aksen, i plottet over, strekker seg fra omtrent 220000 til 360000, og vi ser i løpet av et 8-måneders perspektiv, svingninger som omtrentlig følger samme trend som NTBB. Vi ser også her, på aggregert nivå, den store nedgangen fra juli til november.
+
+
+## Oppgave 4
+Den siste oppgaven går ut på om vi kan benytte disse dataene til å finne den beste lokasjonen, for et nytt utsalgssted. 
+For denne analysen har vi valgt å se på innbyggertall i hvert fylke. Vi har også sett på leiepriser for hvert utsalgssted, samt fortjeneste for hvert utsalgssted. Til slutt har vi laget et plott, som viser hvor stor andel av kjedens fortjeneste, de forskjellige utsalgsstedene har.
+
+Vi starter med å lage et søylediagram som viser oversikt over antall innbyggere i hvert fylke. Vi har brukt det originale datasettet, county_demographic, til å lage dette plottet. Dette datasettet inneholdt allerede County_Name og County_Total_Census_Pop, som vil si navnet på fylkene og populasjon i disse fylkene.
+```{r}
+county_demographic %>% 
+  ggplot(aes(x= County_Name, y = County_Total_Census_Pop)) +
+  geom_col(fill = "blue")+
+  coord_flip()+
+   labs(title = "Innbyggere i hvert fylke",
+       x= "",
+       y= "Antall innbyggere")
+
+```
+
+Vi ser, på y-aksen, navnet på fylkene og på x-aksen har vi antall innbyggere, som strekker seg opp til omtrent 250000 innbyggere. Vi ser at Power County har et innbyggertall på rett over 175000 og Appleton County har rett under 250000 innbyggere. Vi valgte å se nærmere på disse to fylkene for å se om et høyt innbyggertall, har påvirkning på fortjenesten, til utsalgsstedene. For å finne ut om det er lønnsomt å sette opp et nytt utsalgssted, der hvor det er flest innbyggere.
+
+
+Vi lagde så et nytt plott, med leiepriser for hvert utsalgssted. Vi brukte datasettet AppWichStoresAttributes, som allerede inneholdt Annual_Rent_Estimate og Store_Name. Vi valgte å sette farger etter fylke, slik at vi ser mer oversiktlig hvilke fylker hvert av utsalgsstedene tilhører.
+```{r}
+AppWichStoresAttributes %>% 
+  ggplot(aes(x= Store_Name, y = Annual_Rent_Estimate, fill = County_Name)) +
+  geom_col(position = "identity")+
+  coord_flip()+
+  scale_y_continuous(labels = scales::dollar)+
+  labs(title = "Leiepriser for hvert utsalgssted",
+       x= "Navn på utsalgssted",
+       y= "Årlige leieutgifter")
+```
+
+Vi har brukt coord_flip(), for å rotere diagrammet. Her ser vi på y-aksen, navnet på utsalgsstedene, og på x-aksen ser vi årlige leieutgifter. Appleton County, som vi tidligere så har desidert flest innbyggere, har ikke de høyeste leieprisene. Power County derimot, som har de høyeste leieprisene, er samtidig det fylket med nest høyest innbyggertall. Vi ser også at de har flest utsalgssteder og disse tre, har de tre høyeste leieprisene.
+
+Videre ser vi på hvordan leieprisene spiller inn på fortjenesten, altså hvilken påvirkning leieprisen har på inntekten til kjeden.
+
+
+Vi laget så et nytt datasett, profit_stores, der vi selekterte navn på utsalgssteder og fortjenesten. Vi brukte summarise(), for å beregne profitt for hvert enkelt utsalg. Deretter lagde vi et plott med ggplot, som viser fortjenesten til hvert enkelt utsalgssted.
+```{r}
+profit_stores <- df %>% 
+  select(Store_Name, Profit) 
+
+profit_stores <- profit_stores%>% 
+  group_by(Store_Name) %>% 
+  summarise(Profit= sum(Profit))
+
+profit_stores %>% 
+  ggplot(aes(x= Store_Name, y = Profit)) +
+           geom_col(fill= "blue")+
+           coord_flip()+
+           scale_y_continuous(labels = scales::dollar)+
+           labs(title = "Fortjeneste for hvert utsalgssted",
+                x= "Navn på utsalgssted",
+                y= "Fortjeneste")
+```
+
+Dette plottet er et søylediagram, som viser fortjenesten for hvert enkelt utsalgssted. Vi ser at utsalget med den høyeste fortjenesten er Power City FreeStand, som ligger rett under 600000 dollar i fortjeneste. Hvis vi sammenligner med utsalget Littletown StripMall, som ligger i Appleton County, ser vi at innbyggertall ikke nødvendigvis har så sterk innflytelse på generell fortjeneste. Vi ser at Power County har to av de tre høyeste fortjenestene per utsalgssted. 
+
+
+Til slutt ville vi se på hvor stor andel av kjedens fortjeneste, de forskjellige utsalgsstedene har. Denne gangen beregnet vi også utsalgsstedets fortjeneste etter bedriftens leieutgifter. 
+Vi startet med å lage datasettet profit_all_stores_rent, der vi tok profitt minus årlige leieutgifter. Deretter beregnet vi RentRatio, som viser utsalgets prosentvise andel av kjedens fortjeneste. 
+```{r}
+profit_all_stores_rent <- profit_stores %>%
+  mutate(Annual_rent = AppWichStoresAttributes$Annual_Rent_Estimate,
+         Profit_with_rent = Profit - Annual_rent,
+         RentRatio = scales::percent(Profit_with_rent/sum(Profit_with_rent),
+         accuracy=.1, trim = FALSE))
+```
+
+Vi laget så plottet, ved bruk av datasettet vi nettopp laget.
+```{r}
+profit_all_stores_rent %>% 
+  ggplot(aes(x = Store_Name, y= RentRatio)) +
+  geom_col(fill= "blue")+
+  geom_text(label = profit_all_stores_rent$RentRatio,
+            hjust=1, 
+            vjust=0.5, 
+            size = 3.5, 
+            color = "white")+
+  coord_flip()+
+  labs(title = "Andel av kjedens fortjeneste",
+       x= "Navn på utsalgssted",
+       y= "Prosentvis andel av kjedens fortjeneste")
+```
+
+Vi ser i plottet at Power County, fortsatt har to av de tre høyeste fortjenestene etter leieutgiftene ble tatt med i beregningen. Hvis vi tar for oss Appleton County (Littletown StripMall), ser vi at fylket har et godt utgangspunkt for å etablere et nytt utsalgssted. Power County presterer likevel på et jevnere høyt nivå samtidig som de har et høyt innbyggertall. Vi tenker derfor utifra våre analyser at Power County ser ut som det beste fylket å etablere et nytt utsalgssted i, ettersom innbyggerne ser ut til å foretrekke denne sandwich-kjeden.
